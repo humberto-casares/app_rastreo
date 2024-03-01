@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map with Vehicles</title>
+    <!-- Add Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 80vh; /* Set height to 80% of viewport height for responsiveness */
+            width: 100%; /* Ensure map fills the container */
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-9">
+                <div id="map"></div>
+            </div>
+            <div class="col-md-3">
+                <h3>Vehicle Actions</h3>
+                <div class="form-group">
+                    <label for="id">ID:</label>
+                    <input type="number" class="form-control" id="id">
+                </div>
+                <div class="form-group">
+                    <label for="placas">Placas:</label>
+                    <input type="text" class="form-control" id="placas">
+                </div>
+                <div class="form-group">
+                    <label for="lat">Latitude:</label>
+                    <input type="range" class="form-control-range" id="lat" min="19.0" max="19.7" value="19.4326" step="0.0001">
+                    <span id="currentLat">Latitude: 19.4326</span>
+                </div>
+                <div class="form-group">
+                    <label for="lon">Longitude:</label>
+                    <input type="range" class="form-control-range" id="lon" min="-99.5" max="-98.9" value="-99.1332" step="0.0001">
+                    <span id="currentLon">Longitude: -99.1332</span>
+                </div>
+                <button id="addCarBtn" class="btn btn-primary">Add Car</button>
+                <button id="modifyCarBtn" class="btn btn-secondary">Modify Car</button>
+                <button id="deleteCarBtn" class="btn btn-danger">Delete Car</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Bootstrap JS and Leaflet JS -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        function initMap() {
+            var map = L.map('map').setView([19.4326, -99.1332], 10); // Mexico City coordinates
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // Update current latitude and longitude values on range slider change
+            document.getElementById('lat').addEventListener('input', function() {
+                document.getElementById('currentLat').innerText = 'Latitude: ' + this.value;
+            });
+
+            document.getElementById('lon').addEventListener('input', function() {
+                document.getElementById('currentLon').innerText = 'Longitude: ' + this.value;
+            });
+
+            // Function to fetch vehicle data from Flask backend and add markers to the map
+            function fetchAndAddMarkers() {
+                fetch('/api/vehicles')
+                .then(response => response.json())
+                .then(data => {
+                    // Clear existing markers
+                    map.eachLayer(layer => {
+                        if (layer instanceof L.Marker) {
+                            map.removeLayer(layer);
+                        }
+                    });
+                    // Add new markers
+                    data.forEach(vehicle => {
+                        L.marker([vehicle.lat, vehicle.lon]).addTo(map)
+                            .bindPopup('Vehicle ID: ' + vehicle.id + '<br>Placas: ' + vehicle.placas + '<br>Latitud: ' + vehicle.lat + '<br>Longitud: ' + vehicle.lon);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching vehicle data:', error);
+                });
+            }
+
+            // Call the function to fetch and add markers
+            fetchAndAddMarkers();
+
+            // Function to add a new car
+            function addCar() {
+                var id = document.getElementById('id').value;
+                var placas = document.getElementById('placas').value;
+                var lat = document.getElementById('lat').value;
+                var lon = document.getElementById('lon').value;
+                fetch('/api/vehicles', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: id,
+                        placas: placas,
+                        lat: lat,
+                        lon: lon
+                    })
+                })
+                .then(response => {
+                    if (response.status === 409) {
+                        throw new Error('ID already exists');
+                    }
+                    if (!response.ok) {
+                        throw new Error('Failed to add car');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Car added successfully:', data);
+                    // Reload map after adding a new car
+                    fetchAndAddMarkers();
+                })
+                .catch(error => {
+                    console.error('Error adding car:', error);
+                    if (error.message === 'ID already exists') {
+                        alert('Failed to add car: ID already exists.');
+                    } else {
+                        alert('Failed to add car. Please try again.');
+                    }
+                });
+            }
+            // Function to modify a car
+            function modifyCar() {
+                var id = document.getElementById('id').value;
+                var newPlacas = document.getElementById('placas').value;
+                var newLat = document.getElementById('lat').value;
+                var newLon = document.getElementById('lon').value;
+                fetch(`/api/vehicles/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        placas: newPlacas,
+                        lat: newLat,
+                        lon: newLon
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to modify car');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Car modified successfully:', data);
+                    // Reload map after modifying a car
+                    fetchAndAddMarkers();
+                })
+                .catch(error => {
+                    console.error('Error modifying car:', error);
+                    alert('Failed to modify car. Please try again.');
+                });
+            }
+
+            // Function to delete a car
+            function deleteCar() {
+                var id = document.getElementById('id').value;
+                fetch(`/api/vehicles/${id}`, {
+                    method: 'DELETE'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to delete car');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Car deleted successfully:', data);
+                    // Reload map after deleting a car
+                    fetchAndAddMarkers();
+                })
+                .catch(error => {
+                    console.error('Error deleting car:', error);
+                    alert('Failed to delete car. Please try again.');
+                });
+            }
+
+            // Event listeners for buttons
+            document.getElementById('addCarBtn').addEventListener('click', addCar);
+            document.getElementById('modifyCarBtn').addEventListener('click', modifyCar);
+            document.getElementById('deleteCarBtn').addEventListener('click', deleteCar);
+        }
+
+        // Initialize the map when the DOM content is loaded
+        document.addEventListener('DOMContentLoaded', initMap);
+    </script>
+</body>
+</html>
